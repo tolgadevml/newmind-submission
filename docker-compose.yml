@@ -1,0 +1,101 @@
+version: '3.9'
+
+services:
+  redis:
+    image: redis:7
+    container_name: redis
+    ports:
+      - "6379:6379"
+  grpc-server:
+    image: ${BACKEND_IMAGE_NAME}
+    command: python analysis_grpc_server.py
+    container_name: grpc-server
+    ports:
+      - "50051:50051"
+    environment:
+      - PYTHONUNBUFFERED=1
+    depends_on:
+      - kafka
+  zookeeper:
+    image: confluentinc/cp-zookeeper:latest
+    environment:
+      ZOOKEEPER_CLIENT_PORT: 2181
+      ZOOKEEPER_TICK_TIME: 2000
+  kafka:
+    image: confluentinc/cp-kafka:latest
+    depends_on:
+      - zookeeper
+    ports:
+      - "9092:9092"
+    environment:
+      KAFKA_BROKER_ID: 1
+      KAFKA_ZOOKEEPER_CONNECT: zookeeper:2181
+      KAFKA_LISTENERS: PLAINTEXT://0.0.0.0:9092
+      KAFKA_ADVERTISED_LISTENERS: PLAINTEXT://kafka:9092
+      KAFKA_OFFSETS_TOPIC_REPLICATION_FACTOR: 1
+  backend:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+      args:
+        TOPIC_MODEL: ${TOPIC_MODEL}
+        CLASSIFIER_MODEL: ${CLASSIFIER_MODEL}
+        SUMMARY_MODEL: ${SUMMARY_MODEL}
+        BACKEND_PORT: ${BACKEND_PORT}
+        HOST: ${HOST}
+    container_name: ${BACKEND_CONTAINER_NAME}
+    image: ${BACKEND_IMAGE_NAME}
+    command: uvicorn main:app --host 0.0.0.0 --port 8080
+    ports:
+      - "${BACKEND_PORTS}"
+    env_file:
+      - ./backend/.env.local
+    volumes:
+      - huggingface_cache:/app/.cache/huggingface
+
+  frontend:
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile
+      args:
+        NEXT_PUBLIC_API_URL: ${NEXT_PUBLIC_API_URL}
+        FRONTEND_PORT: ${FRONTEND_PORT}
+    container_name: ${FRONTEND_CONTAINER_NAME}
+    image: ${FRONTEND_IMAGE_NAME}
+    ports:
+      - "${FRONTEND_PORTS}"
+    env_file:
+      - ./frontend/.env.local
+    depends_on:
+      - backend
+  result-consumer:
+    command: python -m api.services.result_consumer
+    container_name: result-consumer
+    image: ${BACKEND_IMAGE_NAME}
+    depends_on:
+      - kafka
+    environment:
+      - TOPIC_MODEL=sentence-transformers/all-MiniLM-L6-v2
+      - CLASSIFIER_MODEL=facebook/bart-base
+      - SUMMARY_MODEL=google/flan-t5-base
+      - KAFKA_BROKER=kafka:9092
+    volumes:
+      - huggingface_cache:/app/.cache/huggingface
+  worker:
+    image: ${BACKEND_IMAGE_NAME}
+    command: python kafka_worker.py
+    container_name: kafka-worker
+    depends_on:
+      - backend
+      - grpc-server
+      - kafka
+    environment:
+      - KAFKA_BROKER=kafka:9092
+      - TOPIC_MODEL=sentence-transformers/all-MiniLM-L6-v2
+      - CLASSIFIER_MODEL=facebook/bart-base
+      - SUMMARY_MODEL=google/flan-t5-base
+    volumes:
+      - huggingface_cache:/app/.cache/huggingface
+  
+volumes:
+  huggingface_cache:

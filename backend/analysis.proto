@@ -1,0 +1,25 @@
+syntax = "proto3";
+
+service AnalysisService {
+  rpc Analyze (AnalyzeRequest) returns (AnalyzeResponse);
+}
+
+message AnalyzeRequest {
+  repeated string comments = 1;
+}
+
+message Opinion {
+  string type = 1;
+  string text = 2;
+}
+
+message TopicResult {
+  string topic_id = 1;
+  string topic_summary = 2;
+  repeated Opinion opinions = 3;
+  string conclusion = 4;
+}
+
+message AnalyzeResponse {
+  repeated TopicResult topics = 1;
+}

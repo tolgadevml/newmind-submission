@@ -1,0 +1,15 @@
+fastapi
+uvicorn[standard]
+pydantic-settings
+pandas
+transformers
+sentence-transformers
+torch
+scipy
+scikit-learn
+grpcio
+grpcio-tools
+googleapis-common-protos
+google
+confluent-kafka
+redis
